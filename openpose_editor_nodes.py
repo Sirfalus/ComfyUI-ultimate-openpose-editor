@@ -1,6 +1,8 @@
 import json
 import torch
 import numpy as np
+import os
+import glob
 from .util import draw_pose_json, draw_pose
 
 OpenposeJSON = dict
@@ -107,3 +109,129 @@ class OpenposeEditorNode:
         pose_img = [draw_pose(blank_pose_for_draw, H_scaled, W_scaled, pose_marker_size, face_marker_size, hand_marker_size)]
         pose_img_np = np.array(pose_img).astype(np.float32) / 255
         return { "ui": {"POSE_JSON": [json.dumps(blank_output_keypoints)]}, "result": (torch.from_numpy(pose_img_np), blank_output_keypoints, json.dumps(blank_output_keypoints)) }
+
+
+class PoseBatchLoaderNode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "folder_path": ("STRING", {"default": "", "multiline": False}),
+                "file_pattern": ("STRING", {"default": "*.json", "multiline": False}),
+                "current_index": ("INT", {"default": 0, "min": 0, "max": 10000}),
+            },
+            "optional": {
+                "sort_files": ("BOOLEAN", {"default": True}),
+                "loop_batch": ("BOOLEAN", {"default": False}),
+            }
+        }
+    
+    RETURN_NAMES = ("POSE_KEYPOINT", "POSE_JSON", "FILENAME", "TOTAL_COUNT", "CURRENT_INDEX")
+    RETURN_TYPES = ("POSE_KEYPOINT", "STRING", "STRING", "INT", "INT")
+    FUNCTION = "load_batch_pose"
+    CATEGORY = "ultimate-openpose"
+
+    def load_batch_pose(self, folder_path, file_pattern, current_index, sort_files=True, loop_batch=False):
+        """
+        Load pose JSON files from a folder and return them one by one based on current_index.
+        """
+        try:
+            # Validate folder path
+            if not folder_path or not os.path.exists(folder_path):
+                print(f"Error: Folder path '{folder_path}' does not exist")
+                return (None, "{}", "No files found", 0, 0)
+            
+            # Get all JSON files matching the pattern
+            search_pattern = os.path.join(folder_path, file_pattern)
+            json_files = glob.glob(search_pattern)
+            
+            if not json_files:
+                print(f"No files found matching pattern: {search_pattern}")
+                return (None, "{}", "No files found", 0, 0)
+            
+            # Sort files if requested
+            if sort_files:
+                json_files.sort()
+            
+            total_files = len(json_files)
+            
+            # Handle looping
+            if loop_batch and total_files > 0:
+                current_index = current_index % total_files
+            elif current_index >= total_files:
+                current_index = max(0, total_files - 1)
+            
+            # Load the current file
+            current_file = json_files[current_index]
+            filename = os.path.basename(current_file)
+            
+            try:
+                with open(current_file, 'r', encoding='utf-8') as f:
+                    pose_data = json.load(f)
+                
+                # Convert to string for POSE_JSON output
+                pose_json_str = json.dumps(pose_data, indent=2)
+                
+                print(f"Loaded pose file: {filename} ({current_index + 1}/{total_files})")
+                
+                return (pose_data, pose_json_str, filename, total_files, current_index)
+                
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON file {filename}: {e}")
+                return (None, "{}", f"Error parsing {filename}", total_files, current_index)
+            except Exception as e:
+                print(f"Error reading file {filename}: {e}")
+                return (None, "{}", f"Error reading {filename}", total_files, current_index)
+                
+        except Exception as e:
+            print(f"Error in load_batch_pose: {e}")
+            return (None, "{}", "Error", 0, 0)
+
+
+class PoseBatchIteratorNode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "batch_loader_output": ("POSE_KEYPOINT", {}),
+                "auto_increment": ("BOOLEAN", {"default": True}),
+            },
+            "optional": {
+                "manual_index": ("INT", {"default": -1, "min": -1, "max": 10000}),
+            }
+        }
+    
+    RETURN_NAMES = ("POSE_KEYPOINT", "NEXT_INDEX")
+    RETURN_TYPES = ("POSE_KEYPOINT", "INT")
+    FUNCTION = "iterate_batch"
+    CATEGORY = "ultimate-openpose"
+
+    def __init__(self):
+        self.current_index = 0
+
+    def iterate_batch(self, batch_loader_output, auto_increment, manual_index=-1):
+        """
+        Helper node to iterate through batch poses with automatic or manual indexing.
+        """
+        if manual_index >= 0:
+            self.current_index = manual_index
+        elif auto_increment:
+            self.current_index += 1
+        
+        next_index = self.current_index + 1 if auto_increment else self.current_index
+        
+        return (batch_loader_output, next_index)
+
+
+# Add the new nodes to the node class mappings
+NODE_CLASS_MAPPINGS = {
+    "OpenposeEditorNode": OpenposeEditorNode,
+    "PoseBatchLoaderNode": PoseBatchLoaderNode,
+    "PoseBatchIteratorNode": PoseBatchIteratorNode,
+}
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "OpenposeEditorNode": "OpenPose Editor",
+    "PoseBatchLoaderNode": "Pose Batch Loader",
+    "PoseBatchIteratorNode": "Pose Batch Iterator",
+}
