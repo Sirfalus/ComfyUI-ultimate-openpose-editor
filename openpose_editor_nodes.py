@@ -219,8 +219,57 @@ class PoseBatchIteratorNode:
             self.current_index += 1
         
         next_index = self.current_index + 1 if auto_increment else self.current_index
-        
         return (batch_loader_output, next_index)
+
+
+class PoseReferenceLoaderNode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "json_file_path": ("STRING", {"default": "", "multiline": False}),
+            },
+        }
+    
+    RETURN_NAMES = ("POSE_KEYPOINT",)
+    RETURN_TYPES = ("POSE_KEYPOINT",)
+    FUNCTION = "load_reference_pose"
+    CATEGORY = "ultimate-openpose"
+
+    def load_reference_pose(self, json_file_path):
+        """
+        Load a single JSON pose file for use as Target_pose_keypoint reference.
+        """
+        try:
+            # Validate file path
+            if not json_file_path or not os.path.exists(json_file_path):
+                print(f"Error: File path '{json_file_path}' does not exist")
+                return (None,)
+            
+            # Check if it's a JSON file
+            if not json_file_path.lower().endswith('.json'):
+                print(f"Error: File '{json_file_path}' is not a JSON file")
+                return (None,)
+            
+            filename = os.path.basename(json_file_path)
+            
+            try:
+                with open(json_file_path, 'r', encoding='utf-8') as f:
+                    pose_data = json.load(f)
+                
+                print(f"Loaded reference pose: {filename}")
+                return (pose_data,)
+                
+            except json.JSONDecodeError as e:
+                print(f"Error parsing JSON file {filename}: {e}")
+                return (None,)
+            except Exception as e:
+                print(f"Error reading file {filename}: {e}")
+                return (None,)
+                
+        except Exception as e:
+            print(f"Error in load_reference_pose: {e}")
+            return (None,)
 
 
 # Add the new nodes to the node class mappings
@@ -228,10 +277,12 @@ NODE_CLASS_MAPPINGS = {
     "OpenposeEditorNode": OpenposeEditorNode,
     "PoseBatchLoaderNode": PoseBatchLoaderNode,
     "PoseBatchIteratorNode": PoseBatchIteratorNode,
+    "PoseReferenceLoaderNode": PoseReferenceLoaderNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "OpenposeEditorNode": "OpenPose Editor",
     "PoseBatchLoaderNode": "Pose Batch Loader",
     "PoseBatchIteratorNode": "Pose Batch Iterator",
+    "PoseReferenceLoaderNode": "Pose Reference Loader",
 }
