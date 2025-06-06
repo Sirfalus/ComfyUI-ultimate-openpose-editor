@@ -272,12 +272,70 @@ class PoseReferenceLoaderNode:
             return (None,)
 
 
+class PoseSaverNode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pose_keypoint": ("POSE_KEYPOINT", {}),
+                "target_folder": ("STRING", {"default": "./output_poses", "multiline": False}),
+                "filename": ("STRING", {"default": "saved_pose.json", "multiline": False}), 
+            },
+            "optional": {
+                "filename_prefix": ("STRING", {"default": "", "multiline": False}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("SAVED_FILE_PATH",)
+    FUNCTION = "save_pose_keypoint"
+    CATEGORY = "ultimate-openpose"
+    OUTPUT_NODE = True
+
+    def save_pose_keypoint(self, pose_keypoint, target_folder, filename, filename_prefix=""):
+        if pose_keypoint is None:
+            print("PoseSaverNode: No pose_keypoint data to save.")
+            return ("",) 
+
+        if not target_folder:
+            print("PoseSaverNode: Target folder not specified. Please provide a valid folder path.")
+            # Fallback to a default if somehow empty, though ComfyUI usually provides the default from INPUT_TYPES
+            target_folder = "./output_poses_fallback"
+        
+        if not filename:
+            print("PoseSaverNode: Filename not specified. Please provide a valid filename.")
+            # Fallback, though ComfyUI provides default
+            filename = "default_saved_pose.json"
+
+        try:
+            os.makedirs(target_folder, exist_ok=True)
+
+            base_name_from_input, _ = os.path.splitext(filename)
+            
+            prefix = filename_prefix if filename_prefix is not None else ""
+
+            final_filename = f"{prefix}{base_name_from_input}.json"
+            
+            file_path = os.path.join(target_folder, final_filename)
+
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(pose_keypoint, f, indent=4) 
+
+            print(f"PoseSaverNode: Saved pose to {file_path}")
+            return (file_path,)
+
+        except Exception as e:
+            print(f"PoseSaverNode: Error saving pose - {e}")
+            return ("",)
+
+
 # Add the new nodes to the node class mappings
 NODE_CLASS_MAPPINGS = {
     "OpenposeEditorNode": OpenposeEditorNode,
     "PoseBatchLoaderNode": PoseBatchLoaderNode,
     "PoseBatchIteratorNode": PoseBatchIteratorNode,
     "PoseReferenceLoaderNode": PoseReferenceLoaderNode,
+    "PoseSaverNode": PoseSaverNode, # Added new node
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -285,4 +343,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PoseBatchLoaderNode": "Pose Batch Loader",
     "PoseBatchIteratorNode": "Pose Batch Iterator",
     "PoseReferenceLoaderNode": "Pose Reference Loader",
+    "PoseSaverNode": "Pose Saver", # Added new node display name
 }
