@@ -95,6 +95,28 @@ class OpenposeEditorNode:
             except json.JSONDecodeError: input_json_str = f"[{temp_json}]"
         
         if input_json_str:
+            # Ensure canvas dimensions are present in the JSON data
+            try:
+                parsed_data = json.loads(input_json_str)
+                if isinstance(parsed_data, list):
+                    for item in parsed_data:
+                        if isinstance(item, dict):
+                            if 'canvas_width' not in item:
+                                item['canvas_width'] = 512
+                            if 'canvas_height' not in item:
+                                item['canvas_height'] = 768
+                else:
+                    if isinstance(parsed_data, dict):
+                        if 'canvas_width' not in parsed_data:
+                            parsed_data['canvas_width'] = 512
+                        if 'canvas_height' not in parsed_data:
+                            parsed_data['canvas_height'] = 768
+                        parsed_data = [parsed_data]
+                input_json_str = json.dumps(parsed_data)
+            except json.JSONDecodeError:
+                # If parsing fails, just continue with original string
+                pass
+            
             # process_pose 호출 시 Target_pose_keypoint 객체를 인자로 전달
             image_tensor, keypoint_obj_batch, json_str_batch = process_pose(input_json_str, Target_pose_keypoint)
             if image_tensor is not None:
@@ -318,8 +340,11 @@ class PoseSaverNode:
             
             file_path = os.path.join(target_folder, final_filename)
 
+            # Ensure canvas dimensions are present before saving
+            processed_pose_keypoint = self._ensure_canvas_dimensions(pose_keypoint)
+
             with open(file_path, 'w', encoding='utf-8') as f:
-                json.dump(pose_keypoint, f, indent=4) 
+                json.dump(processed_pose_keypoint, f, indent=4) 
 
             print(f"PoseSaverNode: Saved pose to {file_path}")
             return (file_path,)
@@ -327,6 +352,33 @@ class PoseSaverNode:
         except Exception as e:
             print(f"PoseSaverNode: Error saving pose - {e}")
             return ("",)
+    
+    def _ensure_canvas_dimensions(self, pose_keypoint):
+        """Ensure canvas dimensions are present in the pose data"""
+        if pose_keypoint is None:
+            return None
+        
+        # Make a deep copy to avoid modifying the original
+        import copy
+        processed_data = copy.deepcopy(pose_keypoint)
+        
+        # Handle different data structures
+        if isinstance(processed_data, list):
+            # List of pose objects
+            for item in processed_data:
+                if isinstance(item, dict):
+                    if 'canvas_width' not in item:
+                        item['canvas_width'] = 512
+                    if 'canvas_height' not in item:
+                        item['canvas_height'] = 768
+        elif isinstance(processed_data, dict):
+            # Single pose object
+            if 'canvas_width' not in processed_data:
+                processed_data['canvas_width'] = 512
+            if 'canvas_height' not in processed_data:
+                processed_data['canvas_height'] = 768
+        
+        return processed_data
 
 
 # Add the new nodes to the node class mappings

@@ -224,8 +224,13 @@ def draw_pose_json(pose_json_str, resolution_x, use_ground_plane, show_body, sho
     all_frames_keypoints_output = []
 
     if pose_json_str:
-        images_data_list = json.loads(pose_json_str)
-        if not isinstance(images_data_list, list): images_data_list = [images_data_list]
+        try:
+            images_data_list = json.loads(pose_json_str)
+            if not isinstance(images_data_list, list): 
+                images_data_list = [images_data_list]
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}")
+            return [], []
 
         pbar = ProgressBar(len(images_data_list))
         
@@ -259,12 +264,46 @@ def draw_pose_json(pose_json_str, resolution_x, use_ground_plane, show_body, sho
         FEET_INDICES = {KP["RAnkle"], KP["LAnkle"]}
 
         for image_data in images_data_list:
+            # Validate and ensure required keys exist
+            if not isinstance(image_data, dict):
+                print(f"Warning: Invalid image_data type: {type(image_data)}, skipping...")
+                pbar.update(1)
+                continue
+                
             if 'people' not in image_data or not image_data['people']:
-                pbar.update(1); continue
+                pbar.update(1)
+                continue
             
             figures = image_data['people']
-            H = image_data['canvas_height']
-            W = image_data['canvas_width']
+            # Handle missing canvas dimensions with default values
+            original_H = image_data.get('canvas_height')
+            original_W = image_data.get('canvas_width')
+            
+            # Always ensure we have output dimensions
+            # If resolution_x is specified and valid, use it for width
+            if resolution_x >= 64:
+                # When resolution_x is specified, calculate height maintaining aspect ratio
+                if original_W is not None and original_H is not None:
+                    # Preserve aspect ratio from original canvas
+                    output_W = resolution_x
+                    output_H = int(original_H * (resolution_x / original_W))
+                else:
+                    # No original canvas, use default aspect ratio
+                    output_W = resolution_x
+                    output_H = int(768 * (resolution_x / 512))  # Maintain default 512:768 ratio
+            else:
+                # resolution_x not specified or invalid, use original or defaults
+                output_W = original_W if original_W is not None else 512
+                output_H = original_H if original_H is not None else 768
+            
+            # Ensure dimensions are valid numbers for processing
+            try:
+                H = int(original_H) if original_H is not None else output_H
+                W = int(original_W) if original_W is not None else output_W
+                if H <= 0: H = output_H
+                if W <= 0: W = output_W
+            except (ValueError, TypeError):
+                H, W = output_H, output_W
             
             current_image_people_data_for_output = []
             all_scaled_candidates_for_drawing, all_scaled_faces_for_drawing, all_scaled_hands_for_drawing = [], [], []
@@ -457,7 +496,7 @@ def draw_pose_json(pose_json_str, resolution_x, use_ground_plane, show_body, sho
                     prev_candidate_count = len(all_scaled_candidates_for_drawing) - len(candidate_list_current_fig_np)
                     final_subset_for_drawing.append([prev_candidate_count+i if body_raw[i*3+2]>0 else -1 for i in range(len(candidate_list_current_fig_np))])
             
-            current_frame_keypoint_object = { "people": current_image_people_data_for_output, "canvas_width": W, "canvas_height": H }
+            current_frame_keypoint_object = { "people": current_image_people_data_for_output, "canvas_width": output_W, "canvas_height": output_H }
             all_frames_keypoints_output.append(current_frame_keypoint_object)
             
             candidate_norm, faces_norm = all_scaled_candidates_for_drawing, all_scaled_faces_for_drawing
